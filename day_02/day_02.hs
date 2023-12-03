@@ -70,3 +70,23 @@ part1 = do putStrLn "# Part 1 #"
                pGames = [g | g <- games, gIsPossible maxRound g]
                pId = map gid pGames
            print (sum pId)
+
+-- 3. Solving part 2
+
+-- Find the minimal set of cubes for playing a list of Round.
+minCubeSet :: [Round] -> Round
+minCubeSet rs = Round{nRed = maximum (map nRed rs),
+                      nGreen = maximum (map nGreen rs),
+                      nBlue = maximum (map nBlue rs)}
+
+-- Computing the power of a given Game
+gPower :: Game -> Int
+gPower g = (nRed minSet) * (nGreen minSet) * (nBlue minSet)
+  where minSet = minCubeSet (rounds g)
+
+part2 = do putStrLn "# Part 2 #"
+           contents <- readFile "input.txt"
+           let ls = lines contents
+               games = map gameFromStr ls
+               res = sum (map gPower games)
+           print res
