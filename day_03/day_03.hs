@@ -1,6 +1,7 @@
--- Day 03
-import Data.Char
-import Data.List
+-- Day 02
+
+import Data.Char (isDigit)
+import Data.List.Split
 
 ex_input = "467..114..\n"
         ++ "...*......\n"
@@ -13,139 +14,133 @@ ex_input = "467..114..\n"
         ++ "...$.*....\n"
         ++ ".664.598..\n"
 
--- 1. Parsing the input
--- We put the input in a matrix.
--- The matrix holds properties for each cell.
+-- We proceed as follows. We go over the set of lines by packs of three.
+-- The pack has a center line, a top line, and a bottom line.
+-- We detect consecutive digits in the center line, and store the
+-- characters in a new pack, cutting out the digits with their adjacent
+-- characters.
+-- eg.
+--       ..*.
+--       .35.
+--       ....
+-- We can then parse the number and detect the symbol easily.
 
--- A cell can be either a symbol, a dot or a digit.
-data CellType = Sym | Dot | Dig
+-- * First we try doing this on a single line
+ex_line1 = "14*....223.2."
+ex_line2 = "14*....223.2"
+ex_line3 = ".14*....223.2."
+ex_line4 = "..14*....223.2."
 
--- Equality predicate with Dig
-digP :: CellType -> Bool
-digP Dig = True
-digP _ = False
+cutNumH :: String -> String -> [String]
+cutNumH (c:s) [] = cutNumH s [c]
+cutNumH [c] acc
+  | isDigit c = [acc ++ [c]]
+  | isDigit (last acc) = [acc ++ [c]]
+  | otherwise = []
+cutNumH (c:s) acc
+  | isDigit c = cutNumH s (acc ++ [c])
+  | isDigit (last acc) = [acc ++ [c]] ++ cutNumH s [c]
+  | otherwise = cutNumH s [c]
 
+cutNum :: String -> [String]
+cutNum s = cutNumH s []
 
-data Cell = Cell {char :: Char, cellType :: CellType}
-type Matrix = [[Cell]]
+-- ex: cutNum ex_line1
+-- ["14*",".223.",".2."]
 
--- Printers for debugging
-printCellType :: CellType -> Char
-printCellType Sym = 'S'
-printCellType Dot = '.'
-printCellType Dig = 'D'
+-- * Now let's do the same thing on columns of characters.
+ex_three = ("...*......",
+            "..35..633.",
+            "......#...")
 
-cellt :: Cell -> Char
-cellt c = printCellType $ cellType c
+type LineTriple = (String, String, String)
+type Col = (Char, Char, Char) -- top, center, bottom
 
-rowStr :: (Cell -> Char) -> [Cell] -> String
-rowStr acc r = map acc r
+-- Access top, center and bottom element of a tuple
+top (a, _, _) = a
+cen (_, a, _) = a
+bot (_, _, a) = a
 
-matrixStr :: (Cell -> Char) -> Matrix -> [String]
-matrixStr acc m = map (rowStr acc) m
+-- Parse three strings into a list of Col
+parseThree :: LineTriple -> [Col]
+parseThree s = zip3 (top s) (cen s) (bot s)
 
-printMatrix :: (Cell -> Char) -> Matrix -> IO ()
-printMatrix acc m = putStrLn $ unlines $ matrixStr acc m
--- ex: printMatrix char m
---   : printMatrix cellt m
+type Block = [Col]
 
--- Parse a character into a CellType
-parseType :: Char -> CellType
-parseType c
-  | isDigit c = Dig
-  | c == '.'  = Dot
-  | otherwise = Sym
+-- Get a row of a block as a string
+getRow :: (Col -> Char) -> Block -> String
+getRow acce b = map acce b
+-- ex: getRow top $ parseThree ex_three
 
--- Parse a single character into a Cell.
-parseCell :: Char -> Cell
-parseCell c = Cell {char = c, cellType = parseType c}
+-- Block printer for debug
+strBlock :: Block -> String
+strBlock b = (getRow top b) ++ "\n"
+            ++ (getRow cen b) ++ "\n"
+            ++ (getRow bot b) ++ "\n"
+printBlock b = putStrLn $ strBlock b
+printBlocks bs = sequence (map printBlock bs)
 
--- Parse a single row
-parseRow :: String -> [Cell]
-parseRow r = map parseCell r
+-- cutNumH but with columns
+cutNumHC :: [Col] -> [Col] -> [Block]
+cutNumHC (c:s) [] = cutNumHC s [c]
+cutNumHC [c] acc
+  | isDigit (cen c) = [acc ++ [c]]
+  | isDigit (cen (last acc)) = [acc ++ [c]]
+  | otherwise = []
+cutNumHC (c:s) acc
+  | isDigit (cen c) = cutNumHC s (acc ++ [c])
+  | isDigit (cen (last acc)) = [acc ++ [c]] ++ cutNumHC s [c]
+  | otherwise = cutNumHC s [c]
 
--- Parse the input string into a Matrix
-strToMatrix :: String -> Matrix
-strToMatrix s = map parseRow (lines s)
--- ex: strToMatrix ex_input
+cutNumC :: [Col] -> [Block]
+cutNumC cols = cutNumHC cols []
 
--- 2. Part 1
--- Our plan is to store every number into a separate table.
--- This table stores the numbers, and it also holds properties
--- such as adjacency with a symbol.
--- The matrix holds an index into the table of digits at these
--- cells that contain a digit.
--- We mark every symbol in the matrix with a boolean in the cell
--- property.
--- We iterate through every symbol and check for adjacent numbers.
--- We mark every number found in the table.
+-- ex: printBlocks $ cutNumC $ parseThree ex_three
 
-type Pos = (Int, Int) -- Position in the matrix.
+-- * Now feed an input and return the blocks.
 
--- Cell accessor by Pos in Matrix
-getCell :: Matrix -> Pos -> Cell
-getCell m p = m !! (fst p) !! (snd p) -- terrible :(
+-- We need to pad the first and last line of the input first.
+dottedStr :: String -> String
+dottedStr s = replicate (length s) '.'
 
---- First we find the Pos of every digit in the matrix, by group
---- of adjacent digits.
+padDot :: [String] -> [String]
+padDot ss = [dots] ++ ss ++ [dots]
+  where dots = dottedStr (head ss)
+-- ex: padDot $ lines ex_input
 
--- Is a Cell of CellType Dig?
-cellIsDigit :: Cell -> Bool
-cellIsDigit c = digP $ cellType c
+-- Create LineTriple from the input
+parseInThree :: [String] -> [LineTriple]
+parseInThree ss = [lts | lts <- zip3 ss (drop 1 ss) (drop 2 ss)]
+-- ex: parseInThree $ padDot $ lines ex_input
 
--- Find the index of digits in a row of Cell.
-digInd :: [Cell] -> [Int]
-digInd cs = findIndices cellIsDigit cs
+-- Return detected blocks from input.
+getBlocks :: [String] -> [Block]
+getBlocks ss = concat $ map (cutNumC . parseThree)
+                            (parseInThree $ padDot ss)
+-- ex: printBlocks $ getBlocks $ lines ex_input
 
--- Credit to https://gitlab.haskell.org/ghc/ghc/-/issues/1408
-groupWhen :: (a -> a -> Bool) -> [a] -> [[a]]
-groupWhen _ []    = []
-groupWhen _ [a]   = [[a]]
-groupWhen f (a:l) = if f a (head c) then (a:c):r
-                                    else [a]:c:r
-  where (c:r) = groupWhen f l
+-- * Is there a symbol anywhere in a Block?
 
--- Group the consecutive integers together in a sorted list of integers.
-groupConsec :: [Int] -> [[Int]]
-groupConsec = groupWhen (\x y -> y - x == 1)
+-- Get all the characters from a block as a single string
+getChars :: Block -> String
+getChars b = (getRow top b) ++ (getRow cen b) ++ (getRow bot b)
 
--- Given a row index and a list of integer groups, convert to Pos
-toPos :: Int -> [[Int]] -> [[Pos]]
-toPos rowInd inds = map (\g -> map (\x -> (rowInd, x)) g) inds
+-- Symbol predicate: is there a symbol in the block?
+symInBlockP :: Block -> Bool
+symInBlockP b = not $ null $ filter (\c -> (not $ isDigit c) && c /= '.')
+                                    (getChars b)
 
--- ex:
--- m1 = strToMatrix ex_input
--- groupConsec $ digInd $ head m1
--- [[0,1,2],[5,6,7]]
--- toPos 2 (groupConsec $ digInd $ head m1)
--- [[(2,0),(2,1),(2,2)],[(2,5),(2,6),(2,7)]]
+-- * Parse the number in the block
+numInBlock :: Block -> Int
+numInBlock b = read $ filter isDigit $ getRow cen b
 
--- Return the groups of digits in the matrix by their position.
-digPos :: Matrix -> [[Pos]]
-digPos m = concat [toPos irow (groupConsec $ digInd row)
-           | (row, irow) <- zip m [0 .. (length m) - 1]]
+-- * Solution to part 1
+partSum :: [String] -> Int
+partSum ss = sum $ map numInBlock $ filter symInBlockP $ getBlocks ss
+-- ex: partSum $ lines ex_input
 
---- Then we parse the numbers indicated by these digits, assign them
---- an index and store them in the numbers table.
-
--- Convert a group of positions of consecutive characters to the corresponding
--- integer.
-groupToNum :: Matrix -> [Pos] -> Int
-groupToNum m ps = read $ map (char . getCell m) ps
--- ex groupToNum m [(0,0),(0,1),(0,2)] -> 467
-
--- Is there a Sym adjacent to a Pos?
-
--- Now we iterate over the groups of numbers in the Matrix, we:
--- - Read the Int, store it in the NumeTab
--- - Store a reference to the NumeTab entry in every digit Cell (maybe use
---   another matrix idk)
-
--- A number stores its value and whether it is adjacent to a symbol.
-data Nume = Nume {val :: Int, adj :: Bool}
-
-instance Show Nume where
-  show (Nume v a) = "Nume {val: " ++ show v ++ ", adj: " ++ show a ++ "}"
-
--- Table of Nume
-type NumeTab = [Nume]
+part1 = do putStrLn "# Part 1 #"
+           contents <- readFile "input.txt"
+           let ls = lines contents
+               res = partSum ls
+           print res
