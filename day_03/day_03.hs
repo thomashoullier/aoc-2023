@@ -1,7 +1,6 @@
--- Day 02
-
+-- Day 03
 import Data.Char (isDigit)
-import Data.List.Split
+import Data.List (elemIndices)
 
 ex_input = "467..114..\n"
         ++ "...*......\n"
@@ -143,4 +142,89 @@ part1 = do putStrLn "# Part 1 #"
            contents <- readFile "input.txt"
            let ls = lines contents
                res = partSum ls
+           print res
+
+-- * Part 2
+ex_gear = ("467..114..",
+           "...*......",
+           "..35..633.")
+
+-- * Let's do this on a single line first.
+ex_gline1 = "457.*54..."
+ex_gline2 = "3*1"
+ex_gline3 = "467..114.."
+ex_gline4 = "457...12*"
+ex_gline5 = "*457...12"
+
+-- Parse the digits to the right of *, if any.
+digR :: String -> Int -> String
+digR s ind = takeWhile isDigit $ drop (ind + 1) s
+-- ex: digR ex_gline1 4 -> 54
+
+-- Parse the digits to the left of *
+digL :: String -> Int -> String
+digL s ind = reverse $ takeWhile isDigit $ drop (l - ind) (reverse s)
+  where l = length s
+-- digL ex_gline4 8 -> 12
+
+-- * Now let's do a parser for the top and bottom line.
+--   The difference is that a number can be aligned with the gear here.
+--   If there is no number directly over or under the gear, then we
+--   simply have to parse left and right of the position as previously.
+--   If there is a number then we have to find its extent left and right,
+--   there can be no other number.
+
+ex_tline1 = "467..114.." -- gear below at index 3
+ex_tline2 = "..35..633." -- gear above at index 3
+
+-- Parse the numbers either up or down of the gear
+digUD :: String -> Int -> [String]
+digUD s ind
+  | not $ isDigit (s !! ind) = [digR s ind, digL s ind]
+  | otherwise                = [digA s ind]
+
+-- Parse a number around a given digit in a string.
+digA :: String -> Int -> String
+digA s ind = (reverse $ takeWhile isDigit $ reverse $ take ind s)
+          ++ (takeWhile isDigit $ drop ind s)
+-- ex: digA ex_tline1 2 -> 467
+
+-- Parse all the part numbers around a gear position in a LineTriple
+getGDigs :: LineTriple -> Int -> [Int]
+getGDigs ss ind = map read $ filter (not . null) (dLR ++ dT ++ dB)
+  where sc = cen ss
+        st = top ss
+        sb = bot ss
+        dLR = [digR sc ind, digL sc ind]
+        dT = digUD st ind
+        dB = digUD sb ind
+-- ex: getGDigs ex_gear 3
+
+-- Is a list of numbers representative of a Gear? (exactly two)
+isGear :: [Int] -> Bool
+isGear xs = length xs == 2
+
+-- Compute the gear ratio of a Gear
+gearRatio :: [Int] -> Int
+gearRatio xs = (head xs) * (head (tail xs))
+
+-- Find the gear symbols in a String.
+findGSyms :: String -> [Int]
+findGSyms s = elemIndices '*' s
+
+-- Compute all the gear ratios on a LineTriple
+gearRatios :: LineTriple -> [Int]
+gearRatios ss = map gearRatio $ filter isGear $
+                map (\ind -> getGDigs ss ind) (findGSyms $ cen ss)
+-- eg: gearRatios ex_gear
+
+-- Sum all the gear ratios in the input
+gRSum :: [String] -> Int
+gRSum = sum . concat . map gearRatios . parseInThree . padDot
+-- ex: gRSum (lines ex_input) -> 467835
+
+part2 = do putStrLn "# Part 2 #"
+           contents <- readFile "input.txt"
+           let ls = lines contents
+               res = gRSum ls
            print res
