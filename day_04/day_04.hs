@@ -2,6 +2,7 @@
 
 import Data.Char (isDigit)
 import Data.List.Split (splitOneOf, splitOn)
+import Data.List (intersect)
 
 ex_input =
      "Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53\n"
@@ -48,3 +49,29 @@ parseCard s = (parseId idStr,
                (parseN winStr, parseN havStr))
   where [idStr, winStr, havStr] = splitCardStr s
 -- ex: parseCard ex_line
+
+-- * Part 1
+
+-- Count the numbers in common between two lists
+countMatches :: [Int] -> [Int] -> Int
+countMatches xs ys = length $ intersect xs ys
+
+-- Convert a number of matches to a number of points.
+matchToPoints :: Int -> Int
+matchToPoints 0 = 0
+matchToPoints m = 2 ^ (m - 1)
+
+-- Count the number of points a Card is worth
+points :: Card -> Int
+points c = matchToPoints nMatches
+  where nMatches = countMatches (winN c) (havN c)
+
+-- Parse a stack of Cards, count their points and sum them.
+pointsStack :: [String] -> Int
+pointsStack = sum . map (points . parseCard)
+
+part1 = do putStrLn "# Part 1 #"
+           contents <- readFile "input.txt"
+           let ls = lines contents
+               res = pointsStack ls
+           print res
