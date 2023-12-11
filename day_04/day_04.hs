@@ -75,3 +75,43 @@ part1 = do putStrLn "# Part 1 #"
            let ls = lines contents
                res = pointsStack ls
            print res
+
+-- * Part 2
+-- We track the number of instances of each card in a list.
+-- We add a list of ones*instances of size nMatches to every next position in
+-- this list, starting from the beginning.
+
+-- Sum two lists of equal size with: zipWith (+) l1 l2
+-- we need to zero pad the ones*instances
+addList :: [Int] -> [Int] -> [Int]
+addList = zipWith (+)
+
+-- zero-pad a list by placing it at a given index in the padded list.
+-- We do not account for going over the specified length.
+-- length ind list
+zeroPad :: Int -> Int -> [Int] -> [Int]
+zeroPad l i xs = (replicate i 0) ++ xs ++ (replicate (l - il - i) 0)
+  where il = length xs
+
+-- Run the algorithm over the Cards, getting the number of instances
+-- per Card. We proceed by recursive iteration.
+propagCardsH :: [Card] -> [Int] -> [Int]
+propagCardsH [c] [ns] = [ns] -- The number of instances is not modified.
+propagCardsH (c:cs) (n:ns) = [n] ++ (propagCardsH cs (addList newNums ns))
+  where matches = countMatches (winN c) (havN c)
+        l = length ns
+        newNums = zeroPad l 0 (replicate matches n)
+-- propagCardsH cards [1,1,1,..]
+
+propagCards :: [Card] -> [Int]
+propagCards cs = propagCardsH cs (replicate l 1)
+  where l = length cs
+-- ex: propagCards $ map parseCard $ lines ex_input -> [1,2,4,8,14,1]
+
+part2 = do putStrLn "# Part 2 #"
+           contents <- readFile "input.txt"
+           let ls = lines contents
+               cs = map parseCard ls
+               ns = propagCards cs
+               res = sum ns
+           print res
