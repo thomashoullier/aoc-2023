@@ -1,6 +1,6 @@
 -- Day 05
-import Data.List (find)
-import Data.Maybe (fromMaybe)
+import Data.List (find, sort)
+import Data.Maybe (fromMaybe, isNothing, fromJust)
 import Data.List.Split (splitOn, splitWhen)
 
 ex_input =
@@ -132,3 +132,109 @@ part1 = do putStrLn "# Part 1 #"
            let ls = lines contents
                loc = minLoc ls
            print loc
+
+-- * Part 2
+-- We can try mapping in reverse the locations, starting from the lowest,
+-- to find the first one which maps to any seed.
+-- However, pay attention to the fact that the map in reverse is not so easy to
+-- establish:
+-- Example: if 2 is mapped to 4 in forward, 2 is mapped to 2 in reverse, which
+--          is a contradiction. Maybe try seeing if the result is in the forward
+--          map.
+-- Another approach is to establish all the different range maps from seeds
+-- to locations. Then we pick the map which includes the lowest location.
+
+-- At a given level, the destination can either be mapped by an entry,
+-- or mapped by default, or not mapped at all.
+
+data MappingT = Mapped | Default | Unmapped deriving (Show, Eq)
+
+whichMapping :: Map -> Int -> MappingT
+whichMapping m n
+  | inDestMap m n = Mapped
+  | inSrcMap m n = Unmapped
+  | otherwise = Default
+
+-- Is a given requested Dest number in the Entry range?
+inDestEntry :: Entry -> Int -> Bool
+inDestEntry e i = i >= start && i <= end
+  where start = destStart e
+        end = start + (rangeLen e) - 1
+
+inDestMap :: Map -> Int -> Bool
+inDestMap m i = or (map (\e -> inDestEntry e i) m)
+
+inSrcMap :: Map -> Int -> Bool
+inSrcMap m i = or (map (\e -> inEntry e i) m)
+
+-- At which upward distance is the given Dest number from changing mapping type?
+-- If it is:
+-- - Mapped: we look to the distance to the end of the current range.
+-- - Unmapped: we look to the distance to the next destStart, or the end of the
+--             current src range.
+-- - Default: we look to the distance to the next destStart OR srcStart.
+-- Infinite distances are represented by Nothing, Maybe Int
+
+distNextMap :: Map -> Int -> Maybe Int
+distNextMap m i
+  | mapType == Mapped = distEntryEnd e i
+  | mapType == Unmapped = minimumN [distNextDestStart m i, distSrcEnd se i]
+  | mapType == Default = minimumN [distNextDestStart m i, distNextSrcStart m i]
+    where mapType = whichMapping m i
+          e = findDestEntry m i
+          se = findSrcEntry m i
+
+-- For a mapped destination number, find the corresponding Entry in the Map.
+findDestEntry :: Map -> Int -> Maybe Entry
+findDestEntry m i = find (\e -> inDestEntry e i) m
+
+-- For an entry and a destination number, find the distance to the next mapping
+-- type.
+distEntryEnd :: Maybe Entry -> Int -> Maybe Int
+distEntryEnd e i = Just (destEnd - i + 1)
+  where destEnd = (destStart $ fromJust e) + (rangeLen $ fromJust e) - 1
+
+-- Find the next destination range start, if any.
+nextDestStart :: Map -> Int -> Maybe Int
+nextDestStart m i = find (> i) destStarts
+  where destStarts = sortedDestStarts m
+
+-- Get the sorted list of the destination range starts.
+sortedDestStarts :: Map -> [Int]
+sortedDestStarts m = sort $ map destStart m
+
+-- Distance to the next dest start in the map, if any.
+distNextDestStart :: Map -> Int -> Maybe Int
+distNextDestStart m i
+  | isNothing nextStart = Nothing
+  | otherwise = Just ((fromJust nextStart) - i)
+    where nextStart = nextDestStart m i
+
+-- Find the end of the src range the destination number is currently in.
+distSrcEnd :: Maybe Entry -> Int -> Maybe Int
+distSrcEnd e i = Just ((srcStart $ fromJust e) + (rangeLen $ fromJust e) - i)
+
+-- Find the Entry which has the destination number mapped in its source range.
+findSrcEntry :: Map -> Int -> Maybe Entry
+findSrcEntry m i = find (\e -> inEntry e i) m
+
+-- Distance to the next src start in the map, if any.
+distNextSrcStart :: Map -> Int -> Maybe Int
+distNextSrcStart m i
+  | isNothing nextStart = Nothing
+  | otherwise = Just ((fromJust nextStart) - i)
+    where nextStart = nextSrcStart m i
+
+nextSrcStart :: Map -> Int -> Maybe Int
+nextSrcStart m i = find (> i) srcStarts
+  where srcStarts = sortedSrcStarts m
+
+sortedSrcStarts :: Map -> [Int]
+sortedSrcStarts m = sort $ map srcStart m
+
+-- Minimum function which maps Nothing to infinity.
+minimumN :: [Maybe Int] -> Maybe Int
+minimumN xs
+  | null justL = Nothing
+  | otherwise = minimum justL
+    where justL = filter (not . isNothing) xs
