@@ -146,7 +146,6 @@ part1 = do putStrLn "# Part 1 #"
 
 -- At a given level, the destination can either be mapped by an entry,
 -- or mapped by default, or not mapped at all.
-
 data MappingT = Mapped | Default | Unmapped deriving (Show, Eq)
 
 whichMapping :: Map -> Int -> MappingT
@@ -238,3 +237,113 @@ minimumN xs
   | null justL = Nothing
   | otherwise = minimum justL
     where justL = filter (not . isNothing) xs
+
+-- * Now we just need to start at location 0, see how it is mapped through
+--   the Maps and whether the eventual resulting seed is in a seed range.
+--   We track the distance to the next range at each step in the maps,
+--   including at the seed ranges stage.
+--   We increment the location number by the shortest distance and
+--   reevaluate the mapping from location to seeds.
+--   We continue until we hit the first seed in a range.
+
+-- Parse Seeds as ranges
+data SeedR = SeedR { beg :: Int, len :: Int }
+
+instance Show SeedR where
+  show seed = "SeedR { beg = " ++ show (beg seed)
+           ++ ", len = " ++ show (len seed) ++ " }"
+
+parseSeedR :: String -> [SeedR]
+parseSeedR s = parseSeedRH $ map read $ tail $ splitOn " " ss
+  where ss = last $ splitOn ":" s
+-- ex: parseSeedR str_seeds
+ex_seedR = parseSeedR str_seeds
+
+parseSeedRH :: [Int] -> [SeedR]
+parseSeedRH [x,y] = [SeedR x y]
+parseSeedRH (x:y:xs) = (SeedR x y) : parseSeedRH xs
+
+-- Is a seed number in a given seed range?
+inSeedRange :: SeedR -> Seed -> Bool
+inSeedRange seedRange seed = seed >= start && seed <= end
+  where start = beg seedRange
+        end = start + (len seedRange) - 1
+
+inSeeds :: [SeedR] -> Seed -> Bool
+inSeeds seeds seed = or $ map (\r -> inSeedRange r seed) seeds
+
+-- Distance to the next seed range, Nothing if infinite.
+-- We only need the distance to the next range beginning.
+distSeed :: [SeedR] -> Seed -> Maybe Int
+distSeed seeds seed = find (> 0) dists
+  where starts = map beg seeds
+        dists = map (\x -> x - seed) $ sort $ starts
+
+-- Map destination to source (reverse order)
+mapToSrc :: Map -> Int -> Maybe Int
+mapToSrc m i
+  | mapT == Mapped = Just $ mapEntryToSrc e i
+  | mapT == Unmapped = Nothing
+  | mapT == Default = Just i
+    where mapT = whichMapping m i
+          e = findDestEntry m i
+
+mapEntryToSrc :: Maybe Entry -> Int -> Int
+mapEntryToSrc e i = sstart + dist
+  where je = fromJust e
+        start = destStart je
+        dist = i - start
+        sstart = srcStart je
+
+-- Assess all the relevant data at a given Map stage
+data Stage = Stage { src :: Maybe Int, mapT :: MappingT, dist :: Maybe Int }
+
+instance Show Stage where
+  show stage = "Stage { src = " ++ show (src stage)
+            ++ ", mapT = " ++ show (mapT stage)
+            ++ ", dist = " ++ show (dist stage) ++ "}"
+
+getStage :: Map -> Int -> Stage
+getStage m i = Stage {src = mapToSrc m i,
+                      mapT = whichMapping m i,
+                      dist = distNextMap m i}
+-- ex: getStage ex_map 50
+
+-- Propagate stages through the Maps starting at the first destination number.
+getStages :: [Map] -> Int -> [Stage]
+getStages [m] i = [getStage m i]
+getStages (m:ms) i
+  | (mapT stage == Unmapped) = [stage]
+  | otherwise = stage : getStages ms (fromJust $ src stage)
+    where stage = getStage m i
+-- ex: getStages (reverse ex_maps) 46 -> 82
+
+-- Get the lowest distance from a set of stages
+lowestDist :: [Stage] -> Maybe Int
+lowestDist stages = minimumN $ map dist stages
+
+-- Iterate through location numbers until we hit the first seed
+firstLoc :: [Map] -> [SeedR] -> Int -> Int
+firstLoc maps seeds loc
+  | stageT == Unmapped = firstLoc maps seeds nextLoc
+  | inSeeds seeds (fromJust $ src lastStage) = loc
+  | otherwise = firstLoc maps seeds nextLoc
+    where stages = getStages maps loc
+          lastStage = last stages
+          stageT = mapT lastStage
+          shortDist = lowestDist stages
+          nextLoc = loc + (fromJust shortDist)
+-- ex: firstLoc (reverse ex_maps) ex_seedR 0 -> 46
+
+parseInput2 :: [String] -> ([SeedR], [Map])
+parseInput2 ss = (seeds, maps)
+  where blocks = splitWhen (== "") ss
+        seeds = parseSeedR $ head $ head blocks
+        maps = map parseMap $ tail blocks
+
+part2 = do putStrLn "# Part 2 #"
+           contents <- readFile "input.txt"
+           let ls = lines contents
+               (seeds, maps) = parseInput2 ls
+               loc = firstLoc (reverse maps) seeds 0
+           print loc
