@@ -129,3 +129,103 @@ part1 = do putStrLn "# Part 1 #"
                entries = parseInput ls
                res = winnings entries
            print res
+
+-- * Part 2
+-- I believe we can simply group the Joker with the largest group of cards while
+-- evaluating the type of Hand.
+
+-- Let's rewrite everything with the new rules.
+cardPow2 :: Card -> Int
+cardPow2 'J' = 1
+cardPow2 '2' = 2
+cardPow2 '3' = 3
+cardPow2 '4' = 4
+cardPow2 '5' = 5
+cardPow2 '6' = 6
+cardPow2 '7' = 7
+cardPow2 '8' = 8
+cardPow2 '9' = 9
+cardPow2 'T' = 10
+cardPow2 'Q' = 11
+cardPow2 'K' = 12
+cardPow2 'A' = 13
+
+-- Ordering of cards (eg. for sortBy)
+cardOrd2 :: Card -> Card -> Ordering
+cardOrd2 c1 c2 = compare (cardPow2 c1) (cardPow2 c2)
+
+-- We change the way cards are grouped for counting.
+groupHand :: Hand -> [Hand]
+groupHand h = addToFront groups jokers
+  where jokers = filter (== 'J') h
+        groups = sortBy byLength $ group $ sort $ filter (not . (== 'J')) h
+
+-- Sort by length predicate, longest group in front.
+byLength :: Hand -> Hand -> Ordering
+byLength h1 h2 = compare (length h2) (length h1)
+
+-- Add a group to the front of groups
+addToFront :: [Hand] -> Hand -> [Hand]
+addToFront hs h = (h ++ head hs) : tail hs
+
+typeOfHand2 :: Hand -> HandT
+typeOfHand2 h
+  | h == "JJJJJ" = Five
+  | gLen == 1 = Five
+  | maxLen == 4 = Four
+  | sort lengths == [2,3] = Full
+  | maxLen == 3 = Three
+  | sort lengths == [1,2,2] = Two
+  | maxLen == 2 = One
+  | otherwise = High
+    where groups = groupHand h
+          gLen = length groups
+          lengths = map length groups
+          maxLen = maximum lengths
+-- ex: typeOfHand2 "32T3K" -> One
+--     typeOfHand2 "KK677" -> Two
+--     typeOfHand2 "T55J5" -> Four
+--     typeOfHand2 "KTJJT" -> Four
+--     typeOfHand2 "QQQJA" -> Four
+
+-- Compare the Hands card by card
+cardsComp2 :: [Card] -> [Card] -> Ordering
+cardsComp2 [c1] [c2] = cardOrd2 c1 c2
+cardsComp2 (c1:cs1) (c2:cs2)
+  | o == EQ = cardsComp2 cs1 cs2
+  | otherwise = o
+    where o = cardOrd2 c1 c2
+
+-- Hand ordering for sorting (sortBy)
+handComp2 :: Hand -> Hand -> Ordering
+handComp2 h1 h2
+  | handO == EQ = cardsComp2 h1 h2
+  | otherwise = handO
+    where handO = handOrd2 h1 h2
+
+handScore2 :: Hand -> Int
+handScore2 = handPow . typeOfHand2
+
+-- Compare the Hands first by their overall type
+handOrd2 :: Hand -> Hand -> Ordering
+handOrd2 h1 h2 = compare (handScore2 h1) (handScore2 h2)
+
+entryComp2 :: Entry -> Entry -> Ordering
+entryComp2 e1 e2 = handComp2 (hand e1) (hand e2)
+
+sortEntries2 :: [Entry] -> [Entry]
+sortEntries2 es = sortBy entryComp2 es
+
+-- Compute the winnings from an unsorted set of entries
+winnings2 :: [Entry] -> Int
+winnings2 es = sum $ zipWith (\e r -> (bid e) * r) sortedE [1 .. len]
+  where sortedE = sortEntries2 es
+        len = length sortedE
+-- ex: winnings2 $ parseInput $ lines ex_input
+
+part2 = do putStrLn "# Part 2 #"
+           contents <- readFile "input.txt"
+           let ls = lines contents
+               entries = parseInput ls
+               res = winnings2 entries
+           print res
